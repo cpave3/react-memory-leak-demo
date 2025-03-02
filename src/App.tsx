@@ -6,11 +6,11 @@ import EventListenerLeak from "./EventListenerLeak";
 import IntervalLeak from "./IntervalLeak";
 import FetchLeak from "./FetchLeak";
 
-type DemoType = "interval" | "event" | "fetch";
+type DemoType = "interval" | "event" | "fetch" | "component";
 
 function App() {
-  const [showLeaky, setShowLeaky] = useState(true);
-  const [showFixed, setShowFixed] = useState(true);
+  const [showLeaky, setShowLeaky] = useState(false);
+  const [showFixed, setShowFixed] = useState(false);
   // read the demo type from the url param
   const [demoType, setDemoType] = useState<DemoType>(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -67,6 +67,7 @@ function App() {
             <option value="interval">Interval Leak</option>
             <option value="event">Event Listener Leak</option>
             <option value="fetch">Fetch Abort Leak</option>
+            <option value="component">Leaky Component</option>
           </select>
         </div>
 
