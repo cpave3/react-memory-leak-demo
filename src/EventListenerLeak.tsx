@@ -4,12 +4,13 @@ import React, { useState, useEffect, useRef } from "react";
 function EventListenerLeak({ fixed = false }) {
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const memoryLog = useRef({ events: [] });
+  const [eventCount, setEventCount] = useState(memoryLog.current.events.length);
 
   useEffect(() => {
     console.log(`${fixed ? "Fixed" : "Leaky"} EventListener component mounted`);
 
     // Create a closure over a large data structure
-    const largeData = new Array(100000).fill(0).map((_, i) => ({
+    const largeData = new Array(50).fill(0).map((_, i) => ({
       id: i,
       value: `Event data ${i}`,
       timestamp: Date.now(),
@@ -25,7 +26,7 @@ function EventListenerLeak({ fixed = false }) {
         height: window.innerHeight,
         timestamp: Date.now(),
         // Create ~200KB of data per event
-        details: new Array(50000)
+        details: new Array(50)
           .fill(`Resize to ${window.innerWidth}x${window.innerHeight}`)
           .join(" "),
       };
@@ -39,6 +40,8 @@ function EventListenerLeak({ fixed = false }) {
       );
 
       setWindowWidth(window.innerWidth);
+
+      setEventCount(memoryLog.current.events.length);
 
       // In the fixed version, limit the stored events
       if (fixed && memoryLog.current.events.length > 3) {
@@ -74,20 +77,17 @@ function EventListenerLeak({ fixed = false }) {
     };
   }, [fixed]);
 
-  const estimatedMemoryMB = (memoryLog.current.events.length * 0.2).toFixed(1);
-
   return (
     <div className="demo-component">
       <h3>{fixed ? "Fixed" : "Leaky"} Event Listener</h3>
       <p>Window width: {windowWidth}px</p>
       <p>
-        Events captured: {memoryLog.current.events.length} (~{estimatedMemoryMB}
-        MB)
+        Events captured: {eventCount}
       </p>
       <p className="explanation">
         {fixed
           ? "✅ This version properly removes multiple event listeners and limits stored data"
-          : "❌ PROBLEM: Adds multiple event listeners with closures over large data (~10MB) and captures ~200KB per event"}
+          : "❌ PROBLEM: Adds multiple event listeners with closures and captures lots of data"}
       </p>
       <p className="hint">
         Move your mouse, scroll, or resize the window to see memory growth

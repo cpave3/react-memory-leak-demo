@@ -40,8 +40,7 @@ function LeakyComponent() {
         .map((_, i) => generateLargeObject(leakyArray.current.length + i));
       leakyArray.current = [...leakyArray.current, ...newBatch];
       console.log(
-        `Leaky array now has ${
-          leakyArray.current.length
+        `Leaky array now has ${leakyArray.current.length
         } large objects (~${Math.round(leakyArray.current.length / 10)}MB)`
       );
     };
@@ -71,7 +70,7 @@ function LeakyComponent() {
 
     return () => {
       console.log("Leaky Component unmounted, but references remain!");
-      // We're not clearing the interval
+      clearInterval(dataGenerationInterval);
       // We're not removing the DOM reference
       // The leaky array ref persists in memory
     };

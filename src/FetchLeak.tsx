@@ -1,172 +1,121 @@
-// FetchLeak.js - with exaggerated memory impact
-import React, { useState, useEffect, useRef } from "react";
-
-// Simulate slow API call that returns large data
-const fetchLargeData = () =>
-  new Promise((resolve) =>
-    setTimeout(() => {
-      // Create ~5MB of data
-      const largeResponse = {
-        timestamp: Date.now(),
-        data: "Fetched data at " + new Date().toLocaleTimeString(),
-        details: new Array(1250000).fill("Large response data").join(" "),
-        records: Array(10000)
-          .fill(0)
-          .map((_, i) => ({
-            id: i,
-            value: `Record ${i}`,
-            metadata: `Metadata for record ${i} with timestamp ${Date.now()}`,
-          })),
-      };
-      resolve(largeResponse);
-    }, 3000)
-  );
-
-// Version that accepts abort signal
-const fetchLargeDataWithAbort = (signal) =>
-  new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      // Create ~5MB of data, same as above
-      const largeResponse = {
-        timestamp: Date.now(),
-        data: "Fetched data at " + new Date().toLocaleTimeString(),
-        details: new Array(1250000).fill("Large response data").join(" "),
-        records: Array(10000)
-          .fill(0)
-          .map((_, i) => ({
-            id: i,
-            value: `Record ${i}`,
-            metadata: `Metadata for record ${i} with timestamp ${Date.now()}`,
-          })),
-      };
-      resolve(largeResponse);
-    }, 3000);
-
-    // Handle abort signal
-    if (signal) {
-      signal.addEventListener("abort", () => {
-        clearTimeout(timeout);
-        reject(new DOMException("Aborted", "AbortError"));
-      });
-    }
-  });
+import React, { useState, useEffect, useRef } from 'react';
 
 function FetchLeak({ fixed = false }) {
-  const [data, setData] = useState("Loading...");
+  const [data, setData] = useState('Loading...');
+  const fetchCount = useRef(0);
   const requestLog = useRef({ responses: [] });
 
   useEffect(() => {
-    console.log(`${fixed ? "Fixed" : "Leaky"} Fetch component mounted`);
+    console.log(`${fixed ? 'Fixed' : 'Leaky'} Fetch component mounted`);
 
     let isMounted = true;
     let controller;
 
-    // Function to start repeated fetches to exaggerate memory usage
-    const startFetching = () => {
-      const loadData = async () => {
-        if (fixed) {
-          // Using AbortController in the fixed version
-          controller = new AbortController();
-          try {
-            console.log("Fixed Fetch: Starting fetch request");
-            const result = await fetchLargeDataWithAbort(controller.signal);
+    const fetchData = async () => {
+      try {
+        controller = new AbortController();
+        const signal = controller.signal;
 
-            // Prevent state update after unmount
-            if (isMounted) {
-              console.log("Fixed Fetch: Setting data after successful fetch");
-              setData(result.data);
-
-              // Store only basic info about the response
-              requestLog.current.responses.push({
-                time: new Date().toLocaleTimeString(),
-                status: "success",
-                dataSize: "~5MB",
-              });
-
-              // Limit stored responses in the fixed version
-              if (requestLog.current.responses.length > 2) {
-                requestLog.current.responses.shift();
-              }
-            }
-          } catch (error) {
-            if (error.name === "AbortError") {
-              console.log("Fixed Fetch: Request was aborted");
-            } else if (isMounted) {
-              console.log("Fixed Fetch: Error occurred");
-              setData("Error fetching data");
+        // Use a stable API that returns consistent data
+        const response = await fetch(
+          'https://httpbin.org/delay/5',
+          {
+            signal: fixed ? signal : undefined,
+            // Add some extra headers to simulate a more complex request
+            headers: {
+              'X-Custom-Header': `Request-${fetchCount.current}`,
+              'Cache-Control': 'no-cache'
             }
           }
-        } else {
-          // No abort mechanism in the leaky version
-          try {
-            console.log("Leaky Fetch: Starting fetch request");
-            const result = await fetchLargeData();
+        );
 
-            // Memory leak: No check if component is still mounted
-            console.log("Leaky Fetch: Setting data regardless of mount status");
-            setData(result.data);
-
-            // Store the entire response in memory
-            requestLog.current.responses.push(result); // Store ~5MB per request
-            console.log(
-              `Leaky Fetch: Stored ${requestLog.current.responses.length} responses in memory`
-            );
-
-            // Continue fetching every few seconds to exaggerate the leak
-            setTimeout(startFetching, 5000);
-          } catch (error) {
-            console.log("Leaky Fetch: Error occurred");
-            setData("Error fetching data");
-          }
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
         }
-      };
 
-      loadData();
+        const result = await response.json();
+
+        if (isMounted) {
+          fetchCount.current++;
+
+          // In the leaky version, we store the entire response
+          if (!fixed) {
+            // Store the full response, creating memory pressure
+            requestLog.current.responses.push({
+              id: fetchCount.current,
+              fullResponse: result,
+              // Create some additional memory pressure
+              largeData: new Array(10000).fill(`Extra data for request ${fetchCount.current}`)
+            });
+
+            // Continue fetching if in leaky mode
+            setTimeout(() => {
+              if (isMounted) fetchData();
+            }, 2000);
+          } else {
+            // In fixed version, only store minimal info
+            requestLog.current.responses.push({
+              id: fetchCount.current,
+              title: result.url
+            });
+
+            // Limit stored responses in fixed version
+            if (requestLog.current.responses.length > 3) {
+              requestLog.current.responses.shift();
+            }
+          }
+
+          setData(result.url);
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          console.log('Fetch aborted');
+        } else if (isMounted) {
+          console.error('Fetch error:', error);
+          setData('Error fetching data');
+        }
+      }
     };
 
-    // Start the initial fetch
-    startFetching();
+    // Start initial fetch
+    fetchData();
 
     return () => {
-      console.log(`${fixed ? "Fixed" : "Leaky"} Fetch component unmounted`);
+      console.log(`${fixed ? 'Fixed' : 'Leaky'} Fetch component unmounted`);
+      isMounted = false;
+
+      // Abort any ongoing fetch in the fixed version
+      if (controller) {
+        controller.abort();
+      }
+
+      // Clear stored data in fixed version
       if (fixed) {
-        console.log(
-          "Fixed Fetch: Cleaning up - aborting fetch and setting isMounted flag"
-        );
-        isMounted = false;
-        if (controller) controller.abort();
-        requestLog.current.responses = []; // Clear stored data
-      } else {
-        console.log(
-          "Leaky Fetch: Unmounted but fetch continues and may update state!"
-        );
-        // No cleanup - fetches will continue and memory keeps growing
+        requestLog.current.responses = [];
       }
     };
   }, [fixed]);
 
-  // Calculate estimated memory usage based on responses
+  // Calculate estimated memory usage
   const estimatedMemoryMB = fixed
-    ? (requestLog.current.responses.length * 0.01).toFixed(1) // Fixed stores minimal data
-    : (requestLog.current.responses.length * 5).toFixed(1); // Leaky stores ~5MB per response
+    ? (requestLog.current.responses.length * 0.01).toFixed(1)
+    : (requestLog.current.responses.length * 0.5).toFixed(1);
 
   return (
     <div className="demo-component">
-      <h3>{fixed ? "Fixed" : "Leaky"} Fetch Request</h3>
-      <p>Data: {data}</p>
-      <p>
-        Responses in memory: {requestLog.current.responses.length} (~
-        {estimatedMemoryMB}MB)
+      <h3>{fixed ? 'Fixed' : 'Leaky'} Fetch Request</h3>
+      <p>Fetched Data: {data}</p>
+      <p>Responses in memory: {requestLog.current.responses.length} (~{estimatedMemoryMB}MB)
         {!fixed && requestLog.current.responses.length > 0 && " and growing!"}
       </p>
       <p className="explanation">
-        {fixed
-          ? "✅ This version uses AbortController, checks mount status, and limits stored data"
-          : "❌ PROBLEM: Continuously fetches large data (~5MB per response), stores all responses, and continues after unmount"}
+        {fixed ? (
+          "✅ This version uses AbortController, checks mount status, and limits stored data"
+        ) : (
+          "❌ PROBLEM: Continuously fetches data, stores full responses, and continues after unmount"
+        )}
       </p>
-      <p className="hint">
-        Try unmounting during loading or after a few responses have accumulated
-      </p>
+      <p className="hint">Try unmounting during loading or after a few responses</p>
     </div>
   );
 }
